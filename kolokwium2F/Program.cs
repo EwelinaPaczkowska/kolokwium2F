@@ -1,3 +1,10 @@
+using kolokwium2F.DAL;
+using kolokwium2F.Middlewares;
+using kolokwium2F.Services;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.SwaggerUI;
+
 namespace kolokwium2F;
 
 public class Program
@@ -5,46 +12,64 @@ public class Program
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
+        
+        string? connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-        // Add services to the container.
         builder.Services.AddAuthorization();
+        builder.Services.AddControllers();
+        
+        builder.Services.AddDbContext<GalleriesDbContext>(opt =>
+        {
+            opt.UseSqlServer(connectionString)
+                .EnableSensitiveDataLogging()
+                .LogTo(Console.WriteLine, LogLevel.Information);
+        });
 
-        // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-        builder.Services.AddEndpointsApiExplorer();
-        builder.Services.AddSwaggerGen();
-
+        builder.Services.AddScoped<IGalleriesService, GalleriesService>();
+        builder.Services.AddSwaggerGen(c =>
+        {
+            c.SwaggerDoc("v1", new OpenApiInfo
+            {
+                Version = "v1",
+                Title = "PurchasesApi",
+                Description = "api for managing purchases",
+                Contact = new OpenApiContact
+                {
+                    Name="Api Support",
+                    Email="apiSupport@gmail.com",
+                    Url = new Uri("https://github.com/apiSupport")
+                },
+                License = new OpenApiLicense
+                {
+                    Name = "MIT License",
+                    Url = new Uri("https://opensource.org/licenses/MIT")
+                }
+            });
+        });
+        
         var app = builder.Build();
 
-        // Configure the HTTP request pipeline.
-        if (app.Environment.IsDevelopment())
+        app.UseGlobalExceptionHandling();
+        
+        app.UseSwagger();
+        
+        app.UseSwaggerUI(c =>
         {
-            app.UseSwagger();
-            app.UseSwaggerUI();
-        }
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "webApi");
+            
+            c.DocExpansion(DocExpansion.List);
+            c.DefaultModelExpandDepth(0);
+            c.DisplayRequestDuration();
+            c.EnableFilter();
+            
+        });
+        
 
         app.UseHttpsRedirection();
 
         app.UseAuthorization();
 
-        var summaries = new[]
-        {
-            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-        };
-
-        app.MapGet("/weatherforecast", (HttpContext httpContext) =>
-            {
-                var forecast = Enumerable.Range(1, 5).Select(index =>
-                        new WeatherForecast
-                        {
-                            Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                            TemperatureC = Random.Shared.Next(-20, 55),
-                            Summary = summaries[Random.Shared.Next(summaries.Length)]
-                        })
-                    .ToArray();
-                return forecast;
-            })
-            .WithName("GetWeatherForecast")
-            .WithOpenApi();
+        app.MapControllers();
 
         app.Run();
     }

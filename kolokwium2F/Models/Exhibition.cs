@@ -15,4 +15,5 @@ public class Exhibition
     [Required]
     public DateTime? EndDate { get; set; }
     public int NumberOfArtworks { get; set; }
+    public Artwork Artwork { get; set; }
 }

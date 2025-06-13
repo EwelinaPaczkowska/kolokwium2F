@@ -9,4 +9,5 @@ public class ExhibitionArtwork
     [Required]
     public int ArtworkId { get; set; }
     public decimal InsuranceValue { get; set; }
+    public Gallery Gallery { get; set; }
 }

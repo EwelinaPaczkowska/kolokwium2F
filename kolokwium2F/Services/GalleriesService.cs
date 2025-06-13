@@ -1,10 +1,12 @@
 ﻿using kolokwium2F.DAL;
 using kolokwium2F.DTOs;
 using kolokwium2F.Exceptions;
+using kolokwium2F.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace kolokwium2F.Services;
 
-public class GalleriesService
+public class GalleriesService : IGalleriesService
 {
     private readonly GalleriesDbContext _dbContext;
 
@@ -13,103 +15,82 @@ public class GalleriesService
         _dbContext = dbContext;
     }
 
-    public async Task<GalleryDTO> GetPurchasesAsync(int CustomerId, CancellationToken token)
+    public async Task<GalleryDTO> GetArtworksAsync(int GalleryId, CancellationToken token)
     {
-        var customer = await _dbContext.Gallery.FindAsync(CustomerId, token);
-        if (customer == null)
-            throw new NotFoundException("nie znaleziono klienta");
+        var gallery = await _dbContext.Gallery.FindAsync(GalleryId, token);
+        if (gallery == null)
+            throw new NotFoundException("nie znaleziono galerii");
 
-        var purchasedTicketDto = new GalleryDTO()
+        var galleryDto = new GalleryDTO()
         {
-            FirstName = customer.FirstName,
-            LastName = customer.LastName,
-            PhoneNumber = customer.PhoneNumber
+            Name = gallery.Name,
+            EstablishedDate = gallery.EstablishedDate
         };
-        List<PurchaseDTO> purchases = new List<PurchaseDTO>();
+        List<ExhibitionDTO> exhibitionDtos = new List<ExhibitionDTO>();
 
-        var pull = await _dbContext.PurchasedTicket.Where(p => p.CustomerId == CustomerId).ToListAsync(token);
-
+        var pull = await _dbContext.Exhibition.Where(p => p.ExhibitionId == GalleryId).ToListAsync(token);
+        
         foreach (var pdto in pull)
         {
-            var purchaseDto = new PurchaseDTO()
+            var exhibitionDto = new ExhibitionDTO()
             {
-                Date = pdto.Date,
-                Price = await _dbContext.TicketConcert.Where(p => p.TicketConcertId == pdto.TicketConcertId)
-                    .Select(p => p.Price).FirstOrDefaultAsync(token)
+                Title = pdto.Title,
+                StartDate = pdto.StartDate,
+                EndDate = pdto.EndDate,
+                NumberOfArtworks = pdto.NumberOfArtworks
             };
-            var ticketDto = await _dbContext.TicketConcert.Where(p => p.TicketConcertId == pdto.TicketConcertId)
-                .Select(p => new TicketDTO()
-                {
-                    SerialNumber = p.Ticket.SerialNumber,
-                    SeatNumber = p.Ticket.SeatNumber
-                }).FirstOrDefaultAsync(token);
+            
+            
+            
 
-            purchaseDto.ticket = ticketDto;
-
-            var concertDto = await _dbContext.TicketConcert.Where(p => p.TicketConcertId == pdto.TicketConcertId)
-                .Select(p => new ConcertDTO()
+            /*var concertDto = await _dbContext.Artwork.Where(p => p.ExhibitionArtwork == pdto.ExhibitionId)
+                .Select(p => new ArtworkDTO()
                 {
-                    Name = p.Concert.Name,
-                    Date = p.Concert.Date
+                    Title = p.Gallery.Title,
+                    Date = p.Gallery.Date
                 }).FirstOrDefaultAsync(token);
-            purchaseDto.concert = concertDto;
-            purchases.Add(purchaseDto);
+            exhibitionDto.concert = concertDto;
+            exhibitionDtos.Add(exhibitionDto);*/
         }
 
-        purchasedTicketDto.Purchases = purchases;
-        return purchasedTicketDto;
+        //galleryDto.Purchases = exhibitionDtos;
+        return galleryDto;
     }
 
-    public async Task InsertNewCustomerAsync(CustomerInsertDTO customerDto, CancellationToken token)
+    public async Task InsertNewExhibitionAsync(GalleryInsertDTO galleryInsertDto, CancellationToken token)
 {
     await using var transaction = await _dbContext.Database.BeginTransactionAsync(token);
 
     try
     {
-        var customer = await _dbContext.Customer.FindAsync(new object[] { customerDto.Customer.Id }, token);
+        var customer = await _dbContext.Gallery.FindAsync(new object[] { galleryInsertDto.Gallery.GalleryId }, token);
         if (customer == null)
         {
-            customer = new Customer
+            customer = new Gallery
             {
-                CustomerId = customerDto.Customer.Id,
-                FirstName = customerDto.Customer.FirstName,
-                LastName = customerDto.Customer.LastName,
-                PhoneNumber = customerDto.Customer.PhoneNumber
+                GalleryId = galleryInsertDto.Gallery.GalleryId,
+                Name = galleryInsertDto.Gallery.Name,
             };
-            await _dbContext.Customer.AddAsync(customer, token);
+            await _dbContext.Gallery.AddAsync(customer, token);
         }
 
-        var groupedByConcert = customerDto.Purchases
-            .GroupBy(p => p.ConcertName)
+        var groupedByConcert = galleryInsertDto.Artworks
+            .GroupBy(p => p.Title)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        foreach (var concertName in groupedByConcert.Keys)
+        foreach (var exhibitions in galleryInsertDto.Artworks)
         {
-            if (groupedByConcert[concertName] > 5)
-                throw new BadRequestException($"Nie mozna miec wiecej niz 5 biletow na koncert: {concertName}");
-        }
+            var gallery = await _dbContext.Gallery.FirstOrDefaultAsync(c => c.Name == exhibitions.Title, token);
+            if (gallery == null)
+                throw new NotFoundException($"Wystawy '{exhibitions.Title}' nie znaleziono");
 
-        foreach (var purchase in customerDto.Purchases)
-        {
-            var concert = await _dbContext.Concert.FirstOrDefaultAsync(c => c.Name == purchase.ConcertName, token);
-            if (concert == null)
-                throw new NotFoundException($"Koncertu '{purchase.ConcertName}' nie znaleziono");
-
-            var ticket = new Ticket
+            var artw = new Artwork
             {
-                TicketId = await _dbContext.Ticket.MaxAsync(t => (int?)t.TicketId, token) ?? 1,
-                SerialNumber = $"TK{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                SeatNumber = purchase.seatNumber
+                ArtworkId = await _dbContext.Artwork.MaxAsync(t => (int?)t.ArtworkId, token) ?? 1,
+                InsuranceValue = exhibitions.InsuranceValue
             };
 
-            var purchaseRecord = new TicketConcert
-            {
-                Concert = concert,
-                Price = purchase.Price
-            };
-
-            await _dbContext.Ticket.AddAsync(ticket, token);
-            await _dbContext.TicketConcert.AddAsync(purchaseRecord, token);
+            await _dbContext.Artwork.AddAsync(artw, token);
         }
 
         await _dbContext.SaveChangesAsync(token);

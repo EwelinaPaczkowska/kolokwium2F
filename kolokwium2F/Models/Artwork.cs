@@ -11,5 +11,8 @@ public class Artwork
     [MaxLength(100)]
     public string Title { get; set; }
     [Required]
-    public int YearCreate { get; set; }
+    public int YearCreated { get; set; }
+
+    public ExhibitionArtwork ExhibitionArtwork { get; set; }
+    public int InsuranceValue { get; set; }
 }

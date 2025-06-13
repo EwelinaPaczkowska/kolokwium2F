@@ -11,6 +11,4 @@ public class GalleryDTO
     public string Name { get; set; }
     [Required]
     public DateTime EstablishedDate { get; set; }
-    [Required]
-    public int NumberOfArtworks { get; set; }
 }
